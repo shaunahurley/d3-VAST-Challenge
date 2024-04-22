@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Visualization Project</title>
+    <script src="d3.v3.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+
+    <script>
+        var option = "";
+        for(let i=1993;i<=2018; i++) {
+            option += '<option value="' + i + '">';
+            }
+        window.onload = function() {
+            document.getElementById("options").innerHTML = option;
+        };
+        console.log(option);
+
+    </script>
+
+    <style>
+        /* CSS for styling the chart */
+        .bar {
+            stroke: none;
+        }
+
+        .bar-group {
+            font-size: 14px;
+        }
+
+        .axis text {
+            font-size: 12px;
+        }
+
+        .legend {
+            font-size: 12px;
+            fill: #666;
+        }
+        #mySlider {
+            width: 70%;
+        }
+
+    </style>
+</head>
+
+<body>
+    <input type="range" name="mySlider" id="mySlider" min="1993" max="2018" value="2000" list="steps" oninput="inputChange(this.value)">
+    <datalist id="steps">
+        <div id="options"></div>
+    </datalist>
+    <p id="rangeValue">2000</p>
+    <h1>Rose-crested Blue Pipit Counts per year</h1>
+    <br><br>
+    <div id="chart-container"></div>
+    <script>
+
+        function createGraph(year) {
+            document.getElementById('chart-container').innerHTML = '';
+            const csvFilePath = "AllBirdsCleanV3 Rose-crested Blue pipit Only.csv";
+
+            // Load the CSV file using d3.csv()
+            d3.csv(csvFilePath, function (data) {
+                // Log the loaded data to the console
+                console.log("Loaded data:", data);
+
+                // Ensure that data is not empty and has the expected structure
+                if (!data || data.length === 0) {
+                    console.error("No data loaded or empty data.");
+                    return;
+                }
+
+                // Group data by year and calculate total count
+                var dataByYear = d3.nest()
+                    .key(function (d) {
+                        var dateParts = d.Date.split(" ");
+                        return dateParts[3]; // Extract year from date string
+                    })
+                    .rollup(function (values) {
+                        return values.length; // Count number of entries for each year
+                    })
+                    .entries(data);
+
+                // Calculate average count across all years
+                var totalYears = dataByYear.length;
+                var totalCounts = dataByYear.reduce(function (sum, d) {
+                    return sum + d.values;
+                }, 0);
+                var averageCount = totalCounts / totalYears;
+
+                // Log the grouped data and average count to check
+                console.log("Grouped data by year with counts:", dataByYear);
+                console.log("Average count across all years:", averageCount);
+
+                // Set up the SVG container and dimensions
+                var svgWidth = 800;
+                var svgHeight = 400;
+                var margin = {
+                    top: 20,
+                    right: 30,
+                    bottom: 30,
+                    left: 60
+                };
+                var chartWidth = svgWidth - margin.left - margin.right;
+                var chartHeight = svgHeight - margin.top - margin.bottom;
+
+                var svg = d3.select("#chart-container")
+                    .append("svg")
+                    .attr("width", svgWidth)
+                    .attr("height", svgHeight);
+
+                var chart = svg.append("g")
+                    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+                // Define scales and axes
+                var yScale = d3.scale.ordinal()
+                    .domain(dataByYear.map(function (d) {
+                        return d.key;
+                    }))
+                    .rangeRoundBands([0, chartHeight], 0.1);
+
+                // Adjust the xScale domain to accommodate negative values
+                var xScale = d3.scale.linear()
+                    .domain([d3.min(dataByYear, function (d) { return d.values; }), d3.max(dataByYear, function (d) { return d.values; })])
+                    .range([10, chartWidth - 10]); // Adjust range to leave space for negative values
+
+                var yAxis = d3.svg.axis()
+                    .scale(yScale)
+                    .orient("left");
+
+                var xAxis = d3.svg.axis()
+                    .scale(xScale)
+                    .orient("bottom");
+
+                // Add y-axis
+                chart.append("g")
+                    .attr("class", "y axis")
+                    .call(yAxis);
+
+                // Add x-axis
+                chart.append("g")
+                    .attr("class", "x axis")
+                    .attr("transform", "translate(0," + chartHeight + ")")
+                    .call(xAxis);
+
+                // Define color scale based on average count
+                var color = d3.scale.ordinal()
+                    .domain(["above-average", "below-average"])
+                    .range(["#2ca02c", "#d62728"]);
+
+                // Create stacked bars based on whether count is above or below average
+                var stackedBars = chart.selectAll(".bar-group")
+                    .data(dataByYear.filter( function(d) {
+                        return d.key==year;
+                    }))
+                    .enter().append("g")
+                    .attr("class", "bar-group")
+                    .attr("transform", function (d) {
+                        return "translate(0," + yScale(d.key) + ")";
+                    });
+
+                // Adjust the x attribute of the bars based on their values relative to the average
+                stackedBars.append("rect")
+                    .attr("class", function (d) {
+                        return d.values > averageCount ? "bar above-average" : "bar below-average";
+                    })
+                    .attr("x", function (d) {
+                        return d.values > averageCount ? xScale(averageCount) : xScale(d.values);
+                    })
+                    .attr("y", yScale.rangeBand() / 2)
+                    .attr("width", function (d) {
+                        return Math.abs(xScale(d.values) - xScale(averageCount));
+                    })
+                    .attr("height", yScale.rangeBand() / 2)
+                    .style("fill", function (d) {
+                        return color(d.values > averageCount ? "above-average" : "below-average");
+                    });
+
+                // Add legend
+                var legend = chart.append("g")
+                    .attr("class", "legend")
+                    .attr("transform", "translate(" + (chartWidth - 100) + ", 20)");
+
+                legend.append("rect")
+                    .attr("x", 0)
+                    .attr("y", 0)
+                    .attr("width", 10)
+                    .attr("height", 10)
+                    .style("fill", color("above-average"));
+
+                legend.append("text")
+                    .attr("x", 15)
+                    .attr("y", 9)
+                    .text("Above Average");
+
+                legend.append("rect")
+                    .attr("x", 0)
+                    .attr("y", 20)
+                    .attr("width", 10)
+                    .attr("height", 10)
+                    .style("fill", color("below-average"));
+
+                legend.append("text")
+                    .attr("x", 15)
+                    .attr("y", 29)
+                    .text("Below Average");
+
+                // Add chart title
+                chart.append("text")
+                    .attr("class", "chart-title")
+                    .attr("x", (chartWidth / 2))
+                    .attr("y", 0 - (margin.top / 2))
+                    .attr("text-anchor", "middle")
+                    .style("font-size", "16px")
+                    .text("Diverging Stacked Bar Chart");
+
+                // Add axis labels
+                chart.append("text")
+                    .attr("class", "axis-label")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 0 - margin.left )
+                    .attr("x", 0 - (chartHeight / 2))
+                    .attr("dy", "1em")
+                    .style("text-anchor", "middle")
+                    .text("Year");
+
+                chart.append("text")
+                    .attr("class", "axis-label")
+                    .attr("y", chartHeight + margin.bottom - 10) // Adjust y position to leave space for axis ticks
+                    .attr("x", chartWidth / 2)
+                    .style("text-anchor", "middle")
+                    .text("Count");
+
+
+            });
+        }
+
+        function inputChange(value) {
+                document.getElementById("rangeValue").innerText = value;
+                createGraph(value);
+        }
+    </script>
+</body>
+
+</html>
